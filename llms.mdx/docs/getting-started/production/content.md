@@ -1,0 +1,126 @@
+# Production Builds (/docs/getting-started/production)
+
+
+
+During development, native code hot-reloads via `dlopen` (iOS) and `DexClassLoader` (Android). In production, everything is statically linked — no runtime code loading.
+
+How it works [#how-it-works]
+
+When you build for release, React Native Native:
+
+1. **Scans** your project for native files (`.rs`, `.cpp`, `.mm`, `.swift`, `.kt`)
+2. **Generates bridges** — the glue code that registers your functions and components with the runtime
+3. **Compiles** Rust into a static library
+4. **Links statically** — Xcode/Gradle compile the bridges and link everything into the app binary
+
+```bash
+# iOS release build
+npx expo run:ios --configuration Release
+
+# Android release build
+npx expo run:android --variant release
+```
+
+No extra steps — the native compilers are invoked automatically by CocoaPods (iOS) and Gradle (Android) as part of the normal build.
+
+Development vs production [#development-vs-production]
+
+|                         | Development                       | Production                       |
+| ----------------------- | --------------------------------- | -------------------------------- |
+| **Native code loading** | `dlopen` / `DexClassLoader`       | Statically linked                |
+| **Hot-reload**          | Yes                               | No                               |
+| **Code signing**        | Ad-hoc per `.dylib`               | App-level signing                |
+| **Metro serves native** | Yes (`.dylib` / `.dex` over HTTP) | No (JS bundle only)              |
+| **Build system**        | Metro compiles on save            | CocoaPods / Gradle at build time |
+
+iOS build pipeline [#ios-build-pipeline]
+
+The Expo config plugin sets up a CocoaPods pod (`ReactNativeNativeUserCode`) with a `:before_compile` script phase. On Release builds, this script:
+
+1. Generates `nativ_bridges.mm` — combined C++/ObjC++ bridges with constructor-based registration
+2. Generates `nativ_bridges.swift` — combined Swift source with `@_cdecl` wrappers
+3. Compiles Rust into `libnativ_user.a` — a single unified static library
+4. Xcode compiles these files and links the `.a` as part of the normal build
+
+On Debug builds, the script phase exits immediately — all native code loads via Metro dylibs instead.
+
+<Callout type="info">
+  Adding new native files does **not** require re-running `npx expo prebuild`. The bridge file names are fixed — only their content changes at build time.
+</Callout>
+
+Android build pipeline [#android-build-pipeline]
+
+A Gradle pre-build task invokes the static compiler, which:
+
+1. Generates per-module C++ bridge files with registration constructors
+2. Generates Kotlin wrapper classes for `@nativ_export` functions
+3. Compiles Rust for all ABIs (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`)
+4. Generates a registry class that auto-registers all modules at init time
+
+EAS Build [#eas-build]
+
+React Native Native works with [EAS Build](https://docs.expo.dev/build/introduction/). C++, ObjC++, Swift, and Kotlin are compiled by Xcode/Gradle on EAS as usual — no extra steps.
+
+**Rust requires extra setup** because `cargo` is not available on EAS build servers by default. There are two options:
+
+Option 1: Install Rust on EAS (recommended) [#option-1-install-rust-on-eas-recommended]
+
+Add a pre-install script to your `package.json` that installs Rust on the build server:
+
+```json title="package.json"
+{
+  "scripts": {
+    "eas-build-pre-install": "./scripts/install-rust.sh"
+  }
+}
+```
+
+```bash title="scripts/install-rust.sh"
+#!/bin/bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+. $HOME/.cargo/env
+
+if [ "$EAS_BUILD_PLATFORM" = "ios" ]; then
+  rustup target add aarch64-apple-ios
+elif [ "$EAS_BUILD_PLATFORM" = "android" ]; then
+  rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+fi
+```
+
+```bash
+chmod +x scripts/install-rust.sh
+```
+
+Then build normally:
+
+```bash
+eas build --platform ios
+eas build --platform android
+```
+
+This adds \~30 seconds to the build for Rust installation. The CocoaPods script phase and Gradle task will compile your Rust code as part of the normal build.
+
+Option 2: Prebuild locally [#option-2-prebuild-locally]
+
+Compile Rust to static libraries on your machine, then build on EAS without Rust installed:
+
+```bash
+# Prebuild Rust for iOS
+npx nativ build rust --platform ios
+
+# Prebuild Rust for Android
+npx nativ build rust --platform android
+```
+
+This compiles your Rust code into static libraries in `.nativ/bridges/` (iOS) or `.nativ/generated/release/` (Android). Make sure these are not in your `.gitignore` so EAS picks them up.
+
+Then build normally:
+
+```bash
+eas build --platform ios
+eas build --platform android
+```
+
+<Callout type="info">
+  If you don't use Rust, neither option is needed — everything else compiles on EAS out of the box.
+</Callout>

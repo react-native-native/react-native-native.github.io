@@ -1,0 +1,96 @@
+# Introduction (/docs)
+
+
+
+<Callout type="warn">
+  **Experimental.** React Native Native is in active development. Core functionality works, but certain language-specific features may be incomplete or unstable. Currently only tested on macOS. See [Known Issues](#known-issues) below before using in production.
+</Callout>
+
+React Native Native lets you write native components and modules in **any compiled language** — Rust, C++, Kotlin/Compose, Swift/ObjC — and hot-reload them on a physical device, just like JavaScript.
+
+Why? [#why]
+
+React Native's native module system requires you to write Swift/Kotlin wrappers, maintain Xcode/Android Studio projects, and rebuild the entire app for every change. React Native Native removes all of that:
+
+* **Write native code in your editor** — no IDE switching
+* **Save and see** — Metro compiles, signs, and hot-reloads native code on device
+* **Full platform SDK access** — use any iOS framework or Android API directly
+* **Works with Expo** — drops into any Expo project as a module
+
+How it works [#how-it-works]
+
+Your native code becomes a React component or module that JS can use like any other:
+
+```tsx
+import { fibonacci } from './rust_math';    // Rust function
+import GradientBox from './GradientBox';    // ObjC++ component
+
+<Text>{fibonacci(10)}</Text>
+<GradientBox title="Hello!" style={{ width: 300, height: 200 }} />
+```
+
+Development [#development]
+
+Metro watches your native files alongside JavaScript. When you save a `.cpp`, `.rs`, `.swift`, or `.kt` file:
+
+1. **Metro compiles** it to a signed dynamic library (`.dylib` on iOS, `.dex` on Android)
+2. **Device pulls** the compiled library over HTTP — same as a JS bundle refresh
+3. **Runtime loads** it via `dlopen` (iOS) or `DexClassLoader` (Android)
+4. **Hot-reload** — your changes appear on device in seconds, no full rebuild
+
+```
+Save .cpp → Metro compiles → device loads .dylib → hot-reload
+```
+
+This works on both simulators and physical devices. Metro auto-detects the target architecture and compiles accordingly.
+
+Production [#production]
+
+In release builds, all native code is statically linked into the app binary. No dynamic libraries, no runtime code loading.
+
+**iOS** — A CocoaPods script phase runs before compilation:
+
+1. Scans your project for native files (`.cpp`, `.mm`, `.swift`, `.rs`)
+2. Generates combined bridge files — one `.mm` for all C++/ObjC++ bridges, one `.swift` for all Swift bridges
+3. Compiles Rust into a single static library (`libnativ_user.a`)
+4. Xcode compiles and links everything into the app binary
+
+**Android** — A Gradle pre-build task does the same:
+
+1. Generates per-module bridge files and Kotlin wrappers
+2. Compiles Rust for all ABIs (arm64, armv7, x86\_64, x86)
+3. Gradle compiles and packages everything into the APK
+
+Metro only bundles JavaScript in production — all native code is handled by the platform build system.
+
+```bash
+# Build for release — native compilation is automatic
+npx expo run:ios --configuration Release
+npx expo run:android --variant release
+```
+
+See [Production Builds](/docs/getting-started/production) for details on EAS Build and CI setup.
+
+Known issues [#known-issues]
+
+* **Zig support** — planned but not yet available.
+
+Language setup [#language-setup]
+
+C++, Objective-C++, and Swift work out of the box with no additional setup. Some languages have additional setup steps for your development environment — see the individual language guides for details:
+
+* [Rust](/docs/guides/rust#setup) — install Rust targets and create `Cargo.toml`
+* [Kotlin](/docs/guides/kotlin#setup) — download the Kotlin compiler toolchain
+* [Kotlin with Compose](/docs/guides/kotlin#compose-setup) — additional Compose compiler toolchain
+
+Next steps [#next-steps]
+
+<Cards>
+  <Card title="Installation" href="/docs/getting-started/installation" />
+
+  <Card title="Hello World" href="/docs/getting-started/hello-world" />
+
+  <Card title="Rust Guide" href="/docs/guides/rust" />
+
+  <Card title="C++ Guide" href="/docs/guides/cpp" />
+</Cards>

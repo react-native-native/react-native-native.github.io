@@ -1,0 +1,149 @@
+# Swift / SwiftUI (/docs/guides/objc)
+
+
+
+Swift gives you direct access to every Apple framework with SwiftUI for declarative components.
+
+Setup [#setup]
+
+No additional setup is required. Xcode provides `swiftc` for compilation, which is already available if you have a working React Native iOS development environment.
+
+SwiftUI components [#swiftui-components]
+
+Mark a SwiftUI `View` with `// @nativ_component`:
+
+```swift title="SwiftCounter.swift"
+import SwiftUI
+
+// @nativ_component
+struct SwiftCounterView: View {
+    let title: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+            Text("SwiftUI inside React Native")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(color)
+    }
+}
+```
+
+```tsx title="App.tsx"
+import SwiftCounter from './SwiftCounter';
+
+<SwiftCounter
+  title="Hello from SwiftUI!"
+  r={0.9}
+  g={0.5}
+  b={0.9}
+  style={{ width: '100%', height: 80, borderRadius: 12, overflow: 'hidden' }}
+/>
+```
+
+Functions [#functions]
+
+Use `// @nativ_export` to export plain Swift functions:
+
+```swift title="platform_info.swift"
+import Foundation
+import UIKit
+
+// @nativ_export
+func deviceName() -> String {
+    return UIDevice.current.name
+}
+
+// @nativ_export
+func systemVersion() -> String {
+    return "iOS " + UIDevice.current.systemVersion
+}
+
+// @nativ_export
+func batteryLevel() -> Float {
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    return UIDevice.current.batteryLevel
+}
+```
+
+```tsx title="App.tsx"
+import { deviceName, systemVersion, batteryLevel } from './platform_info';
+
+<Text>device: {deviceName()}</Text>
+<Text>os: {systemVersion()}</Text>
+<Text>battery: {String(batteryLevel())}</Text>
+```
+
+Async functions [#async-functions]
+
+Use `// @nativ_export(async)` for functions that do heavy work:
+
+```swift title="async_utils.swift"
+import Foundation
+
+// @nativ_export(async)
+func slowHello(name: String) -> String {
+    Thread.sleep(forTimeInterval: 1.0)
+    return "Hello \(name) from Swift (after 1s)!"
+}
+```
+
+```tsx title="App.tsx"
+import { slowHello } from './async_utils';
+
+const result = await slowHello('World');
+```
+
+Main thread dispatch [#main-thread-dispatch]
+
+UIKit APIs must be called from the main thread. Add `main` to the annotation:
+
+```swift
+// @nativ_export(sync, main)
+func screenBrightness() -> Float {
+    return Float(UIScreen.main.brightness)
+}
+```
+
+The bridge wraps the call in `DispatchQueue.main.sync { }` automatically. Use this for any function that touches UIKit, haptics, or other UI APIs.
+
+Using Apple frameworks [#using-apple-frameworks]
+
+Any iOS framework is available — CoreLocation, AVFoundation, CoreML, ARKit, HealthKit, and more:
+
+```swift
+import CoreLocation
+
+// @nativ_export
+func isLocationEnabled() -> Bool {
+    return CLLocationManager.locationServicesEnabled()
+}
+```
+
+```swift
+import AVFoundation
+
+// @nativ_export
+func audioCategory() -> String {
+    return AVAudioSession.sharedInstance().category.rawValue
+}
+```
+
+Hot-reload [#hot-reload]
+
+Swift hot-reload uses `dlopen` on code-signed `.dylib` files:
+
+1. Edit your `.swift` file
+2. Save
+3. Metro compiles it with `swiftc`
+4. The `.dylib` is code-signed automatically
+5. The device loads it via `dlopen`
+6. The component re-renders
+
+No Xcode rebuild needed.
